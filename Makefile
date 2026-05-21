@@ -15,5 +15,8 @@ looper: looper.c
 mypipe: mypipe.c
 	$(CC) $(CFLAGS) -o mypipe mypipe.c
 
+mypipeline: mypipeline.c
+	$(CC) $(CFLAGS) -o mypipeline mypipeline.c 
+
 clean:
-	rm -f myshell looper mypipe
+	rm -f myshell looper mypipe mypipeline
