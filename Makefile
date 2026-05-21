@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -g -m32
 
-all: myshell looper mypipe mypipeline
+all: myshell mypipeline
 
 #LineParser: LineParser.c
 #	$(CC) $(CFLAGS) -o LineParser LineParser.c
@@ -9,14 +9,14 @@ all: myshell looper mypipe mypipeline
 myshell: myshell.c
 	$(CC) $(CFLAGS) -o myshell myshell.c LineParser.c
 
-looper: looper.c
-	$(CC) $(CFLAGS) -o looper looper.c
+# looper: looper.c
+# 	$(CC) $(CFLAGS) -o looper looper.c
 
-mypipe: mypipe.c
-	$(CC) $(CFLAGS) -o mypipe mypipe.c
+# mypipe: mypipe.c
+# 	$(CC) $(CFLAGS) -o mypipe mypipe.c
 
 mypipeline: mypipeline.c
 	$(CC) $(CFLAGS) -o mypipeline mypipeline.c 
 
 clean:
-	rm -f myshell looper mypipe mypipeline
+	rm -f myshell mypipeline
