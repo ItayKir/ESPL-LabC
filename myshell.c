@@ -8,7 +8,7 @@
 #include <fcntl.h>
 #include <signal.h>
 
-// --- PART 3: PROCESS MANAGER CONSTANTS & STRUCTURES ---
+// part 3
 #define TERMINATED  -1
 #define RUNNING 1
 #define SUSPENDED 0
@@ -20,23 +20,22 @@ typedef struct process {
     struct process *next;          
 } process;
 
-// --- PART 4: HISTORY CONSTANTS & STRUCTURES ---
+// part 4
 #define HISTLEN 10
 
 typedef struct {
-    int cmd_num;         /* the command-line number */
-    char* cmd_line;      /* a copy of the respective command line */
+    int cmd_num;         
+    char* cmd_line;      
 } historyEntry;
 
 historyEntry* history_list[HISTLEN];
-int hist_oldest = 0;     /* index of the beginning of the queue */
-int hist_newest = -1;    /* index of the end of the queue */
-int hist_count = 0;      /* current number of items */
-int next_cmd_num = 1;    /* monotonically increasing counter */
+int hist_oldest = 0;    
+int hist_newest = -1;    
+int hist_count = 0;      
+int next_cmd_num = 1;    
 
 // --- PART 4: HISTORY MANAGER FUNCTIONS ---
 void addToHistory(const char* line) {
-    // If the queue is full, delete the oldest entry from the beginning
     if (hist_count == HISTLEN) {
         free(history_list[hist_oldest]->cmd_line);
         free(history_list[hist_oldest]);
@@ -44,7 +43,6 @@ void addToHistory(const char* line) {
         hist_count--;
     }
     
-    // Insert the new one at the end in O(1)
     hist_newest = (hist_newest + 1) % HISTLEN;
     history_list[hist_newest] = (historyEntry*)malloc(sizeof(historyEntry));
     history_list[hist_newest]->cmd_num = next_cmd_num++;
@@ -162,7 +160,6 @@ void printProcessList(process** process_list) {
 }
 
 
-// --- EXECUTION FUNCTIONS ---
 void execute_single(cmdLine* pCmdLine, process** process_list){
     pid_t pid = fork();
     if (pid == -1) {
@@ -290,7 +287,7 @@ int main(int argc, char **argv)
         
         if (strlen(input) == 0) continue;
         
-        // --- PART 4: HISTORY EXPANSION ---
+        // part 4
         if (input[0] == '!') {
             int target_num = -1;
             if (input[1] == '!') {
@@ -303,7 +300,7 @@ int main(int argc, char **argv)
                 target_num = atoi(&input[1]);
             }
             
-            // Search for target_num in the circular queue
+
             char* expanded_cmd = NULL;
             for (int i = 0; i < hist_count; i++) {
                 int idx = (hist_oldest + i) % HISTLEN;
@@ -318,11 +315,10 @@ int main(int argc, char **argv)
                 continue; // Ignore this command line
             }
             
-            // Re-enter the retrieved CL into the buffer
             strcpy(input, expanded_cmd);
         }
         
-        // Add the resolved command (not the '!!') into history queue
+
         addToHistory(input);
         
         cmdLine *pCmdLine = parseCmdLines(input);
@@ -379,7 +375,6 @@ int main(int argc, char **argv)
         }
     }
     
-    // Clean up memory before completely exiting
     freeProcessList(process_list);
     freeHistory();
     return 0;
