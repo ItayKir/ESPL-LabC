@@ -34,7 +34,7 @@ int hist_newest = -1;
 int hist_count = 0;      
 int next_cmd_num = 1;    
 
-// --- PART 4: HISTORY MANAGER FUNCTIONS ---
+// part 4
 void addToHistory(const char* line) {
     if (hist_count == HISTLEN) {
         free(history_list[hist_oldest]->cmd_line);
@@ -66,7 +66,7 @@ void freeHistory() {
 }
 
 
-// --- PART 3: PROCESS MANAGER FUNCTIONS ---
+// part 3
 void addProcess(process** process_list, cmdLine* cmd, pid_t pid) {
     process* new_process = (process*)malloc(sizeof(process));
     new_process->cmd = cmd;
@@ -280,7 +280,6 @@ int main(int argc, char **argv)
         char input[2048];
         if (fgets(input, 2048, stdin) == NULL) break;
         
-        // Strip trailing newline for history storage
         if (input[strlen(input)-1] == '\n') {
             input[strlen(input)-1] = '\0';
         }
@@ -293,7 +292,7 @@ int main(int argc, char **argv)
             if (input[1] == '!') {
                 if (hist_count == 0) {
                     printf("Error: History is empty.\n");
-                    continue; // Ignore this command line
+                    continue; // Ignore
                 }
                 target_num = history_list[hist_newest]->cmd_num;
             } else {
@@ -312,7 +311,7 @@ int main(int argc, char **argv)
             
             if (expanded_cmd == NULL) {
                 printf("Error: Event not found.\n");
-                continue; // Ignore this command line
+                continue; // Ignore
             }
             
             strcpy(input, expanded_cmd);
