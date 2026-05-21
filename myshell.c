@@ -8,20 +8,67 @@
 #include <fcntl.h>
 #include <signal.h>
 
-// --- PART 3a & 3b: PROCESS MANAGER CONSTANTS & STRUCTURES ---
+// --- PART 3: PROCESS MANAGER CONSTANTS & STRUCTURES ---
 #define TERMINATED  -1
 #define RUNNING 1
 #define SUSPENDED 0
 
 typedef struct process {
-    cmdLine* cmd;                  /* the parsed command line*/
-    pid_t pid;                     /* the process id that is running the command*/
-    int status;                    /* status of the process: RUNNING/SUSPENDED/TERMINATED */
-    struct process *next;          /* next process in chain */
+    cmdLine* cmd;                  
+    pid_t pid;                     
+    int status;                    
+    struct process *next;          
 } process;
 
-// --- PART 3b: PROCESS MANAGER FUNCTIONS ---
+// --- PART 4: HISTORY CONSTANTS & STRUCTURES ---
+#define HISTLEN 10
 
+typedef struct {
+    int cmd_num;         /* the command-line number */
+    char* cmd_line;      /* a copy of the respective command line */
+} historyEntry;
+
+historyEntry* history_list[HISTLEN];
+int hist_oldest = 0;     /* index of the beginning of the queue */
+int hist_newest = -1;    /* index of the end of the queue */
+int hist_count = 0;      /* current number of items */
+int next_cmd_num = 1;    /* monotonically increasing counter */
+
+// --- PART 4: HISTORY MANAGER FUNCTIONS ---
+void addToHistory(const char* line) {
+    // If the queue is full, delete the oldest entry from the beginning
+    if (hist_count == HISTLEN) {
+        free(history_list[hist_oldest]->cmd_line);
+        free(history_list[hist_oldest]);
+        hist_oldest = (hist_oldest + 1) % HISTLEN;
+        hist_count--;
+    }
+    
+    // Insert the new one at the end in O(1)
+    hist_newest = (hist_newest + 1) % HISTLEN;
+    history_list[hist_newest] = (historyEntry*)malloc(sizeof(historyEntry));
+    history_list[hist_newest]->cmd_num = next_cmd_num++;
+    history_list[hist_newest]->cmd_line = strdup(line);
+    hist_count++;
+}
+
+void printHistory() {
+    for (int i = 0; i < hist_count; i++) {
+        int idx = (hist_oldest + i) % HISTLEN;
+        printf("%d %s\n", history_list[idx]->cmd_num, history_list[idx]->cmd_line);
+    }
+}
+
+void freeHistory() {
+    for (int i = 0; i < hist_count; i++) {
+        int idx = (hist_oldest + i) % HISTLEN;
+        free(history_list[idx]->cmd_line);
+        free(history_list[idx]);
+    }
+}
+
+
+// --- PART 3: PROCESS MANAGER FUNCTIONS ---
 void addProcess(process** process_list, cmdLine* cmd, pid_t pid) {
     process* new_process = (process*)malloc(sizeof(process));
     new_process->cmd = cmd;
@@ -36,7 +83,7 @@ void freeProcessList(process* process_list) {
     process* curr = process_list;
     while (curr != NULL) {
         process* next = curr->next;
-        freeCmdLines(curr->cmd); // Frees the associated parsed command
+        freeCmdLines(curr->cmd); 
         free(curr);
         curr = next;
     }
@@ -58,15 +105,11 @@ void updateProcessList(process **process_list) {
     
     while (curr != NULL) {
         int status;
-        // WNOHANG: returns immediately if no child has exited.
-        // WUNTRACED | WCONTINUED: reports if children stopped or resumed.
         pid_t ret = waitpid(curr->pid, &status, WNOHANG | WUNTRACED | WCONTINUED);
         
         if (ret == -1) {
-            // Process doesn't exist anymore or was already reaped by foreground waitpid
             curr->status = TERMINATED;
         } else if (ret > 0) {
-            // Status changed, evaluate what happened
             if (WIFEXITED(status) || WIFSIGNALED(status)) {
                 curr->status = TERMINATED;
             } else if (WIFSTOPPED(status)) {
@@ -80,7 +123,7 @@ void updateProcessList(process **process_list) {
 }
 
 void printProcessList(process** process_list) {
-    updateProcessList(process_list); // 1. Refresh statuses
+    updateProcessList(process_list); 
     printf("PID\t\tSTATUS\t\tCommand\n");
     
     process* curr = *process_list;
@@ -102,7 +145,6 @@ void printProcessList(process** process_list) {
         }
         printf("\n");
         
-        // 2. Cleanup freshly terminated processes
         process* next = curr->next;
         if (curr->status == TERMINATED) {
             if (prev == NULL) {
@@ -113,7 +155,7 @@ void printProcessList(process** process_list) {
             freeCmdLines(curr->cmd);
             free(curr);
         } else {
-            prev = curr; // Only advance prev if we didn't delete the node
+            prev = curr; 
         }
         curr = next;
     }
@@ -149,7 +191,7 @@ void execute_single(cmdLine* pCmdLine, process** process_list){
     else{
         addProcess(process_list, pCmdLine, pid);
         if(pCmdLine -> blocking){
-            waitpid(pid, NULL, 0); // Reaps the child immediately for foreground tasks
+            waitpid(pid, NULL, 0); 
         }
     }
 }
@@ -158,9 +200,6 @@ void execute_pipeline(cmdLine* pCmdLine, process** process_list) {
     int pipefd[2];
     pid_t child1, child2;
     cmdLine* nextCmd = pCmdLine->next; 
-
-    // Important Memory Fix: Sever the connection between LHS and RHS so 
-    // freeCmdLines doesn't cause a double-free later when clearing the process list.
     pCmdLine->next = NULL; 
 
     if (pCmdLine->outputRedirect != NULL) {
@@ -244,6 +283,48 @@ int main(int argc, char **argv)
         char input[2048];
         if (fgets(input, 2048, stdin) == NULL) break;
         
+        // Strip trailing newline for history storage
+        if (input[strlen(input)-1] == '\n') {
+            input[strlen(input)-1] = '\0';
+        }
+        
+        if (strlen(input) == 0) continue;
+        
+        // --- PART 4: HISTORY EXPANSION ---
+        if (input[0] == '!') {
+            int target_num = -1;
+            if (input[1] == '!') {
+                if (hist_count == 0) {
+                    printf("Error: History is empty.\n");
+                    continue; // Ignore this command line
+                }
+                target_num = history_list[hist_newest]->cmd_num;
+            } else {
+                target_num = atoi(&input[1]);
+            }
+            
+            // Search for target_num in the circular queue
+            char* expanded_cmd = NULL;
+            for (int i = 0; i < hist_count; i++) {
+                int idx = (hist_oldest + i) % HISTLEN;
+                if (history_list[idx]->cmd_num == target_num) {
+                    expanded_cmd = history_list[idx]->cmd_line;
+                    break;
+                }
+            }
+            
+            if (expanded_cmd == NULL) {
+                printf("Error: Event not found.\n");
+                continue; // Ignore this command line
+            }
+            
+            // Re-enter the retrieved CL into the buffer
+            strcpy(input, expanded_cmd);
+        }
+        
+        // Add the resolved command (not the '!!') into history queue
+        addToHistory(input);
+        
         cmdLine *pCmdLine = parseCmdLines(input);
         if(pCmdLine == NULL){
             continue;
@@ -259,44 +340,30 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Failed to execute cd!\n");
             }
         }
+        else if(strcmp(pCmdLine -> arguments[0], "history")==0){
+            printHistory();
+        }
         else if(strcmp(pCmdLine -> arguments[0], "procs")==0){
             printProcessList(&process_list);
         }
         else if(strcmp(pCmdLine -> arguments[0], "stop")==0){
             pid_t target_pid = atoi(pCmdLine -> arguments[1]);
-            if(kill(target_pid, SIGSTOP)!=0){
-                fprintf(stderr, "Failed to stop PID: %d!\n", target_pid);
-            } else {
-                printf("Process %d stopped.\n", target_pid);
-                updateProcessStatus(process_list, target_pid, SUSPENDED);
-            }
+            if(kill(target_pid, SIGSTOP)!=0) fprintf(stderr, "Failed to stop PID: %d!\n", target_pid);
+            else updateProcessStatus(process_list, target_pid, SUSPENDED);
         }
         else if(strcmp(pCmdLine -> arguments[0], "wakeup")==0){
             pid_t target_pid = atoi(pCmdLine -> arguments[1]);
-            if(kill(target_pid, SIGCONT)!=0){
-                fprintf(stderr, "Failed to wakeup PID: %d!\n", target_pid);
-            } else {
-                printf("Process %d woken up.\n", target_pid);
-                updateProcessStatus(process_list, target_pid, RUNNING);
-            }
+            if(kill(target_pid, SIGCONT)!=0) fprintf(stderr, "Failed to wakeup PID: %d!\n", target_pid);
+            else updateProcessStatus(process_list, target_pid, RUNNING);
         }
         else if(strcmp(pCmdLine -> arguments[0], "ice")==0){
             pid_t target_pid = atoi(pCmdLine -> arguments[1]);
-            if(kill(target_pid, SIGINT)!=0){
-                fprintf(stderr, "Failed to ice PID: %d!\n", target_pid);
-            } else {
-                printf("Process %d iced.\n", target_pid);
-                updateProcessStatus(process_list, target_pid, TERMINATED);
-            }
+            if(kill(target_pid, SIGINT)!=0) fprintf(stderr, "Failed to ice PID: %d!\n", target_pid);
+            else updateProcessStatus(process_list, target_pid, TERMINATED);
         }
         else if(strcmp(pCmdLine -> arguments[0], "nuke")==0){
             pid_t target_pid = atoi(pCmdLine -> arguments[1]);
-            if(kill(-target_pid, SIGKILL)!=0){
-                fprintf(stderr, "Failed to nuke process group: %d!\n", target_pid);
-            } else {
-                printf("Process group %d nuked.\n", target_pid);
-                // `updateProcessList` will catch these terminations automatically via waitpid next time procs is run
-            }
+            if(kill(-target_pid, SIGKILL)!=0) fprintf(stderr, "Failed to nuke process group: %d!\n", target_pid);
         }
         else {
             is_builtin = 0; 
@@ -312,7 +379,8 @@ int main(int argc, char **argv)
         }
     }
     
-    // Clean up process list before completely exiting
+    // Clean up memory before completely exiting
     freeProcessList(process_list);
+    freeHistory();
     return 0;
 }
